@@ -31,10 +31,8 @@ app.get("/ping", async (req: Request, res: Response) => {
 
 app.get("/bands", async (req: Request, res: Response) => {
     try {
-        const result = await db.raw(`
-            SELECT * FROM bands;
-        `)
-
+        // const result = await db.select("*").from("bands")
+        const result = await db("bands")
         res.status(200).send(result)
     } catch (error) {
         console.log(error)
@@ -71,10 +69,22 @@ app.post("/bands", async (req: Request, res: Response) => {
             throw new Error("'id' e 'name' devem possuir no mínimo 1 caractere")
         }
 
-        await db.raw(`
-            INSERT INTO bands (id, name)
-            VALUES ("${id}", "${name}");
-        `)
+        // await db.raw(`
+        //     INSERT INTO bands (id, name)
+        //     VALUES ("${id}", "${name}");
+        // `)
+
+        // await db.insert({
+        //     id: id,
+        //     name: name
+        // }).into("bands")
+
+        const newBand = {
+            id: id,
+            name: name
+        }
+
+        await db("bands").insert(newBand)
 
         res.status(200).send("Banda cadastrada com sucesso")
     } catch (error) {
@@ -125,26 +135,61 @@ app.put("/bands/:id", async (req: Request, res: Response) => {
             }
         }
 
-        const [ band ] = await db.raw(`
-            SELECT * FROM bands
-            WHERE id = "${idToEdit}";
-        `) // desestruturamos para encontrar o primeiro item do array
+        // const [ band ] = await db.raw(`
+        //     SELECT * FROM bands
+        //     WHERE id = "${idToEdit}";
+        // `) // desestruturamos para encontrar o primeiro item do array
 
+        const [band] = await db("bands").where({ id: idToEdit })
+        
         if (band) {
-            await db.raw(`
-                UPDATE bands
-                SET
-                    id = "${newId || band.id}",
-                    name = "${newName || band.name}"
-                WHERE
-                    id = "${idToEdit}";
-            `)
+        
+            const newBand = {
+                id: newId || band.id,
+                name: newName || band.name
+            }
+
+            await db("bands").update(newBand).where({id:idToEdit})
+
         } else {
             res.status(404)
             throw new Error("'id' não encontrada")
         }
 
         res.status(200).send({ message: "Atualização realizada com sucesso" })
+    } catch (error) {
+        console.log(error)
+
+        if (req.statusCode === 200) {
+            res.status(500)
+        }
+
+        if (error instanceof Error) {
+            res.send(error.message)
+        } else {
+            res.send("Erro inesperado")
+        }
+    }
+})
+
+app.delete("/bands/:id", async (req: Request, res: Response) => {
+    try {
+        const idToDelete = req.params.id
+
+        const [band] = await db("bands").where({ id: idToDelete })
+        
+        if (band) {
+
+            await db("songs").delete().where({ band_id: idToDelete })
+            
+            await db("bands").del().where({id: idToDelete })
+
+        } else {
+            res.status(404)
+            throw new Error("'id' não encontrada")
+        }
+
+        res.status(200).send({ message: "Banda deletada com sucesso" })
     } catch (error) {
         console.log(error)
 
@@ -205,7 +250,7 @@ app.post("/songs", async (req: Request, res: Response) => {
             res.send("Erro inesperado")
         }
     }
-})
+}) 
 
 app.put("/songs/:id", async (req: Request, res: Response) => {
     try {
@@ -291,32 +336,45 @@ app.put("/songs/:id", async (req: Request, res: Response) => {
 })
 
 app.get("/songs", async (req: Request, res: Response) => {
-  try {
-      const result = await db.raw(`
-        SELECT
-          songs.id AS id,
-          songs.name AS name,
-          bands.id AS bandId,
-          bands.name AS bandName
-        FROM songs
-        INNER JOIN bands
-        ON songs.band_id = bands.id;
-      `)
-      // referencie o notion do material assíncrono "Mais práticas com query builder"
-      // (Seções "Apelidando com ALIAS" e "Junções com JOIN")
+    try {
+        // const result = await db.raw(`
+        // SELECT
+        //     songs.id AS id,
+        //     songs.name AS name,
+        //     bands.id AS bandId,
+        //     bands.name AS bandName
+        // FROM songs
+        // INNER JOIN bands
+        // ON songs.band_id = bands.id;
+        // `)
+        
+        const result = await db("songs")
+        .select(
+            "songs.id AS id",
+            "songs.name AS name",
+            "bands.id AS bandId",
+            "bands.name AS bandName"
+        ).innerJoin(
+            "bands", 
+            "bands.id",
+            "=",
+            "songs.band_id"
+        )
 
-      res.status(200).send(result)
-  } catch (error) {
-      console.log(error)
 
-      if (req.statusCode === 200) {
-          res.status(500)
-      }
+        res.status(200).send(result)
 
-      if (error instanceof Error) {
-          res.send(error.message)
-      } else {
-          res.send("Erro inesperado")
-      }
-  }
+    } catch (error) {
+        console.log(error)
+
+        if (req.statusCode === 200) {
+            res.status(500)
+        }
+
+        if (error instanceof Error) {
+            res.send(error.message)
+        } else {
+            res.send("Erro inesperado")
+        }
+    }
 })
